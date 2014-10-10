@@ -15,15 +15,18 @@ api_url = 'http://ws.audioscrobbler.com/2.0/?method=library.gettracks&user=%s&ap
 class LastImportPlugin(BeetsPlugin):
     def __init__(self):
         super(LastImportPlugin, self).__init__()
-        self.config.add({
+        config['lastfm'].add({
             'user':     '',
             'api_key':  '',
+        })
+        self.config.add({
             'per_page': 500,
+            'retry_limit': 3,
         })
 
     def commands(self):
         cmd = ui.Subcommand('lastimport',
-                        help='import last.fm play counts')
+                help='import last.fm play-count')
 
         def func(lib, opts, args):
             import_lastfm(lib)
@@ -32,8 +35,8 @@ class LastImportPlugin(BeetsPlugin):
         return [cmd]
 
 def import_lastfm(lib):
-    user = config['lastimport']['user']
-    api_key = config['lastimport']['api_key']
+    user = config['lastfm']['user']
+    api_key = config['lastfm']['api_key']
     per_page = config['lastimport']['per_page']
 
     if not user:
@@ -41,29 +44,63 @@ def import_lastfm(lib):
     if not api_key:
         raise ui.UserError('You must specify an api_key for lastimport')
 
-    page = get_tracks(user, api_key, 1, per_page)
-    if not 'tracks' in page:
-        log.error(page)
-        raise ui.UserError('Unable to query last.fm')
+    log.info('Fetching last.fm playlist history for @{0}'.format(user))
 
-    total_pages = int(page['tracks']['@attr']['totalPages'])
-    if total_pages < 1:
-        raise ui.UserError('No data to process, empty query from last.fm')
+    page_total = 1
+    page_current = 0
+    found_total = 0
+    unknown_total = 0
+    retry_limit = config['lastimport']['retry_limit'].get(int)
+    # Iterate through a yet to be known page total count
+    while page_current < page_total:
+        log.info(
+                'lastimport: Querying page #{0}{1}...'
+                .format(
+                    page_current+1,
+                    '/'+str(page_total) if page_total > 1 else ''
+                )
+        )
 
-    for page_num in xrange(1, total_pages):
-        page = get_tracks(user, api_key, page_num, per_page)
-        if 'tracks' in page:
-            process_tracks(lib, page['tracks']['track'])
-        else:
-            log.info('page {0} has no tracks'.format(page_num))
+        for retry in range(0, retry_limit):
+            page = fetch_tracks(user, api_key, page_current+1, per_page)
+            if 'tracks' in page:
+                # Let us the reveal the holy total pages!
+                page_total = int(page['tracks']['@attr']['totalPages'])
+                if page_total < 1:
+                    # It means nothing to us!
+                    raise ui.UserError('No data to process, empty query from last.fm')
 
-    log.info('finished processing {0} pages'.format(total_pages))
+                found, unknown = process_tracks(lib, page['tracks']['track'])
+                found_total += found
+                unknown_total += unknown
+                break
+            else:
+                log.error('lastimport: ERROR: unable to read page #{0}'
+                        .format(page_current+1))
+                if retry < retry_limit:
+                    log.info('lastimport: Retrying page #{0}... ({1}/{2} retry)'
+                            .format(page_current+1, retry+1, retry_limit))
+                else:
+                    log.error('lastimport: FAIL: unable to fetch page #{0}, tried {1} times'
+                            .format(page_current, retry+1))
+        page_current += 1
 
-def get_tracks(user, api_key, page, limit):
+    log.info('lastimport: ... done!')
+    log.info('lastimport: finished processing {0} history pages'.format(page_total))
+    log.info('lastimport: {0} unknown play-counts'.format(unknown_total))
+    log.info('lastimport: {0} play-counts imported'.format(found_total))
+
+def fetch_tracks(user, api_key, page, limit):
     return requests.get(api_url % (user, api_key, page, limit)).json()
 
 def process_tracks(lib, tracks):
-    for num in xrange(0, len(tracks)):
+    total = len(tracks)
+    total_found = 0
+    total_fails = 0
+    log.info('lastimport: Received {0} tracks in this page, processing...'
+            .format(total))
+
+    for num in xrange(0, total):
         song    = ''
         trackid = tracks[num]['mbid']
         artist  = tracks[num]['artist'].get('name', '')
@@ -72,8 +109,8 @@ def process_tracks(lib, tracks):
         if 'album' in tracks[num]:
             album = tracks[num]['album'].get('name', '')
 
-        log.debug(u'lastimport: query: {0} - {1} ({2})'
-                .format(artist, title, album))
+#        log.debug(u'lastimport: query: {0} - {1} ({2})'
+#                .format(artist, title, album))
 
         # First try to query by musicbrainz's trackid
         if (trackid):
@@ -81,8 +118,8 @@ def process_tracks(lib, tracks):
 
         # Otherwise try artist/title/album
         if (not song):
-            #log.debug(u'lastimport: no match for mb_trackid {0}, trying by '
-            #        'artist/title/album'.format(trackid))
+#            log.debug(u'lastimport: no match for mb_trackid {0}, trying by '
+#                    'artist/title/album'.format(trackid))
             query = dbcore.AndQuery([
                 dbcore.query.SubstringQuery('artist', artist),
                 dbcore.query.SubstringQuery('title', title),
@@ -92,7 +129,7 @@ def process_tracks(lib, tracks):
 
         # Last resort, try just artist/title
         if (not song):
-            #log.debug(u'lastimport: no album match, trying by artist/title')
+#            log.debug(u'lastimport: no album match, trying by artist/title')
             query = dbcore.AndQuery([
                 dbcore.query.SubstringQuery('artist', artist),
                 dbcore.query.SubstringQuery('title', title)
@@ -102,12 +139,17 @@ def process_tracks(lib, tracks):
         if (song):
             count = int(song.get('play_count', 0))
             new_count = int(tracks[num]['playcount'])
-            log.debug(u'lastimport: match: {0} - {1} ({2})'
-                    .format(song.artist, song.title, song.album))
-            #log.debug(u'lastimport: updating: play_count {0} => {1}'
-            #        .format(count, new_count))
+            log.debug(u'lastimport: match: {0} - {1} ({2}) updating: play_count {3} => {4}'
+                    .format(song.artist, song.title, song.album, count, new_count))
             song['play_count'] = new_count
             song.store()
+            total_found += 1
         else:
-            log.info(u'lastimport: NO MATCH: {0} - {1} ({2})'
+            total_fails += 1
+            log.info(u'lastimport:   - No match: {0} - {1} ({2})'
                     .format(artist, title, album))
+
+    log.info('lastimport: Acquired {0}/{1} play-counts ({2} unknown)'
+            .format(total_found, total, total_fails))
+
+    return total_found, total_fails

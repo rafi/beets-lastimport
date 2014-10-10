@@ -2,16 +2,15 @@
 Plugin for [beets] that imports Last.fm play counts
 into the database. You can later create [smartplaylists] by querying
 `play_count` and do other fun stuff with this field.
+
 To keep up-to-date, you can run this plugin every once in a while (cron?) or use
 [mpdstats] to update statistics while listening with [MPD]. By using mpdstats,
 you also gain extra fun fields: `rating`, `skip_count`, and `last_played`.
 
-## Dependency
-
+## Dependencies
 - [requests] library
 
 ## Setup
-
 Clone somewhere and configure beets:
 
 ```yml
@@ -20,46 +19,87 @@ pluginpath:
   - /home/rafi/code/python/beetsplug
 plugins: lastimport
 lastimport:
+  per_page: 500
+  retry_limit: 3
+lastfm:
   user: rafib
   api_key: secret
+types:
+  play_count: int
+  rating: float
 ```
 
 Get your own [API key] from Last.fm and
 don't forgot to change the user name in beets configuration.
 
-## Running
+## Usages
+### Import Play-counts
 Simply run `beet lastimport` and wait for the plugin to request tracks from
 last.fm and try to match them to beets' database. You will be notified of false
 matches, for example:
 ```
 $ beet lastimport
-...
-lastimport: NO MATCH: The Beatles - Maxwell's Silver Hammer (Abbey Road)
-lastimport: NO MATCH: The Beatles - I'm Looking Through You (Rubber Soul)
-lastimport: NO MATCH: Yo La Tengo - If It's True (Popular Songs)
-...
+
+lastimport: Fetching last.fm playlist history for @rafib
+lastimport: Querying page #1...
+lastimport: Querying page #2/55...
+lastimport: Querying page #3/55...
+lastimport: Received 500 tracks in this page, processing...
+lastimport:   - No match: The Beatles - Maxwell's Silver Hammer (Abbey Road)
+lastimport:   - No match: The Beatles - I'm Looking Through You (Rubber Soul)
+lastimport: Acquired 480/500 play-counts (20 unknown)
+lastimport: Querying page #4/55...
+lastimport: Querying page #5/55...
+[...]
+lastimport: Querying page #53/55...
+lastimport: ERROR: unable to read page #53
+lastimport: Retrying page #53... (1/3 retry)
+lastimport: Retrying page #53... (2/3 retry)
+lastimport: Querying page #54/55...
+lastimport: Querying page #55/55...
+lastimport: ... done!
+lastimport: finished processing 55 history pages
+lastimport: 935 unknown play-counts
+lastimport: 26,565 play-counts imported
 ```
 
 To see more information, run with verbose mode:
 ```
 $ beet -v lastimport
 ...
-lastimport: query: Amy Winehouse - Wake Up Alone (Back to Black)
-lastimport: match: Amy Winehouse - Wake Up Alone (Back to Black)
-lastimport: query: Air - La femme d'argent (Moon Safari)
-lastimport: match: Air - La Femme d'argent (Moon Safari)
+lastimport: match: jj - From Africa to Málaga (jj n° 2) updating: play_count 0 => 61
+lastimport: match: Röyksopp - Eple (Melody A.M.) updating: play_count 0 => 60
 ...
 ```
 
-## Querying
-Plugin queries last.fm pages of tracks. It first tries to match by musicbrainz
-track-id, then by artist+title+album, and finally by artist+title.
+#### Song Matching
+The plugin fetches history pages from last.fm, then in-order to update beets it
+tries to match:
+- Musicbrainz track-id
+- Artist, title, album
+- Artist, title
 
-## Known Issues
+**Known Issues**:
 - Need to implement a better fuzzy search, problems with quotes and other non-alphanumerics
-- Would like to set live albums with lower precedence
+- Would like to set live albums as lower precedence
 
-## Manual Playlists
+### Beets Queries
+Don't forget to set your `types` plugin with proper data-types.
+```bash
+beet ls play_count:30..60
+beet ls play_count:..10 -f '$artist - $title ($play_count / $rating)'
+beet ls rating:0.8..
+```
+Use the [play] plugin to add songs to your media-player:
+```bash
+beet play rating:0.7..
+```
+
+### Automatic Playlists
+You can use the [smartplaylists] plugin to generate automatic playlists with the
+`play_count` field.
+
+### Manual Playlists
 You can manually create some playlists:
 ```sh
 #!/bin/sh
@@ -88,7 +128,7 @@ sqlite3 $db_file "$(query_above 50)" > $pl_dir/listens_top.m3u
 Have fun!
 
 ## License
-Copyright (c) 2014 Rafael Bodill
+Copyright © 2014 Rafael Bodill
 
 The MIT License
 
@@ -97,4 +137,5 @@ The MIT License
 [API key]: http://www.last.fm/api/account/create
 [requests]: http://docs.python-requests.org/
 [smartplaylists]: http://beets.readthedocs.org/en/latest/plugins/smartplaylist.html
+[play]: http://beets.readthedocs.org/en/latest/plugins/play.html
 [mpdstats]: http://beets.readthedocs.org/en/latest/plugins/mpdstats.html
