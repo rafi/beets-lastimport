@@ -1,6 +1,6 @@
 # Last.fm Play-count Import
-Plugin for [beets] that imports Last.fm play counts
-into the database. You can later create [smartplaylists] by querying
+Plugin for [beets] that imports your Last.fm library play counts
+into beets' database. You can later create [smartplaylists] by querying
 `play_count` and do other fun stuff with this field.
 
 To keep up-to-date, you can run this plugin every once in a while (cron?) or use
@@ -22,7 +22,7 @@ lastimport:
   per_page: 500
   retry_limit: 3
 lastfm:
-  user: rafib
+  user: yourname
   api_key: secret
 types:
   play_count: int
@@ -40,7 +40,7 @@ matches, for example:
 ```
 $ beet lastimport
 
-lastimport: Fetching last.fm playlist history for @rafib
+lastimport: Fetching last.fm library for @rafib
 lastimport: Querying page #1...
 lastimport: Querying page #2/55...
 lastimport: Querying page #3/55...
@@ -58,7 +58,7 @@ lastimport: Retrying page #53... (2/3 retry)
 lastimport: Querying page #54/55...
 lastimport: Querying page #55/55...
 lastimport: ... done!
-lastimport: finished processing 55 history pages
+lastimport: finished processing 55 song pages
 lastimport: 935 unknown play-counts
 lastimport: 26,565 play-counts imported
 ```
@@ -73,8 +73,8 @@ lastimport: match: Röyksopp - Eple (Melody A.M.) updating: play_count 0 => 60
 ```
 
 #### Song Matching
-The plugin fetches history pages from last.fm, then in-order to update beets it
-tries to match:
+The plugin fetches your music library from last.fm, then in-order to update
+beets it tries to match:
 - Musicbrainz track-id
 - Artist, title, album
 - Artist, title

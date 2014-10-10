@@ -44,7 +44,7 @@ def import_lastfm(lib):
     if not api_key:
         raise ui.UserError('You must specify an api_key for lastimport')
 
-    log.info('Fetching last.fm playlist history for @{0}'.format(user))
+    log.info('Fetching last.fm library for @{0}'.format(user))
 
     page_total = 1
     page_current = 0
@@ -86,7 +86,7 @@ def import_lastfm(lib):
         page_current += 1
 
     log.info('lastimport: ... done!')
-    log.info('lastimport: finished processing {0} history pages'.format(page_total))
+    log.info('lastimport: finished processing {0} song pages'.format(page_total))
     log.info('lastimport: {0} unknown play-counts'.format(unknown_total))
     log.info('lastimport: {0} play-counts imported'.format(found_total))
 
