@@ -102,12 +102,12 @@ def process_tracks(lib, tracks):
 
     for num in xrange(0, total):
         song    = ''
-        trackid = tracks[num]['mbid']
-        artist  = tracks[num]['artist'].get('name', '')
-        title   = tracks[num]['name']
-        album   = ''
+        trackid = tracks[num]['mbid'].strip()
+        artist  = tracks[num]['artist'].get('name', '').strip()
+        title   = tracks[num]['name'].strip()
+        album = ''
         if 'album' in tracks[num]:
-            album = tracks[num]['album'].get('name', '')
+            album = tracks[num]['album'].get('name', '').strip()
 
 #        log.debug(u'lastimport: query: {0} - {1} ({2})'
 #                .format(artist, title, album))
@@ -127,9 +127,19 @@ def process_tracks(lib, tracks):
             ])
             song = lib.items(query).get()
 
-        # Last resort, try just artist/title
+        # If not, try just artist/title
         if (not song):
 #            log.debug(u'lastimport: no album match, trying by artist/title')
+            query = dbcore.AndQuery([
+                dbcore.query.SubstringQuery('artist', artist),
+                dbcore.query.SubstringQuery('title', title)
+            ])
+            song = lib.items(query).get()
+
+        # Last resort, try just replacing to utf-8 quote
+        if (not song):
+            title = title.replace('\'', u'’')
+#            log.debug(u'lastimport: no title match, trying utf-8 single quote')
             query = dbcore.AndQuery([
                 dbcore.query.SubstringQuery('artist', artist),
                 dbcore.query.SubstringQuery('title', title)
@@ -149,7 +159,8 @@ def process_tracks(lib, tracks):
             log.info(u'lastimport:   - No match: {0} - {1} ({2})'
                     .format(artist, title, album))
 
-    log.info('lastimport: Acquired {0}/{1} play-counts ({2} unknown)'
-            .format(total_found, total, total_fails))
+    if total_fails > 0:
+        log.info('lastimport: Acquired {0}/{1} play-counts ({2} unknown)'
+                .format(total_found, total, total_fails))
 
     return total_found, total_fails
